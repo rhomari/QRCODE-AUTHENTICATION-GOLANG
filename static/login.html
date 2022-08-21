@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=<device-width>, initial-scale=1.0">
+
+    <title>QR CODE AUTHENTICATION</title>
+</head>
+<style>
+    html {
+        height: 100%;
+        width: 100%;
+        background-image: linear-gradient(to bottom, #242424 0%, #3a3a3a 100%);
+        background-repeat: no-repeat;
+        color: aliceblue;
+        text-align: center;
+    }
+    .login{
+        margin : auto;
+
+        position : absolute;
+        transform : translate(-50%, -50%);
+        left: 50%;
+        top: 50%;
+        height: 40vh;
+        width: 40vw;
+        background: rgb(20, 20, 20);
+        border-radius: 20px;
+        box-shadow: 0 0 20px 8px #d0d0d0;
+
+    }
+    .qr-code {
+        margin: 50px;
+    }
+</style>
+<body>
+    <h1>QRCODE LOGIN PAGE</h1>
+    <div id ="login" class="login">
+        <div style="margin-top : 20px">Scan this QRCode with android app to login</div>
+        <img id="qr-code" class="qr-code" src="./images/loading.gif">
+    </div>
+    <script >
+        const host= window.location.hostname;
+        console.log(host);
+        let websocket= new WebSocket(`ws://${host}:8080/ws`);
+        console.log("Connecting...");
+
+        websocket.onopen = () => {
+            console.log("Connected");
+            websocket.send("makeqrcode")
+        };
+        
+        websocket.onclose = event => {
+            console.log("Closed Connection: ", event);
+            websocket.send("Closed")
+        };
+        websocket.onmessage = event => {
+            console.log("Message Received: ", event.data);
+            if (event.data.substring(0,10) == "QRCODEMADE"){
+                document.getElementById("qr-code").src = `http://${host}:8080/qrcode?id=` + event.data.substring(11);
+            }
+            if (event.data.substring(0,13) == "AUTHENTICATED"){
+                console.log("Authenticated");
+                window.location.href = `http://${host}:8080/dashboard?id=` + event.data.substring(14);
+            }
+            
+        };
+
+        websocket.onerror = error => {
+            console.log("Error: ", error);
+        };  
+    </script>   
+</body>
+</html>
