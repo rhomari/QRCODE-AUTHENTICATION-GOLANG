@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"runtime"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,7 +24,7 @@ type authClient struct {
 	token string
 }
 
-var authClients = make(map[string]authClient) //map of authorized users
+var authClients = make(map[string]*authClient) //map of authorized users
 
 type Client struct {
 	conn    *websocket.Conn
@@ -34,8 +35,8 @@ type Session struct {
 	userdata string
 }
 
-var Clients = make(map[string]Client)
-var AuthUsers = map[string]Session{ // this is a dummy session database
+var Clients = make(map[string]*Client)
+var AuthUsers = map[string]*Session{ // this is a dummy session database
 	"c81e8366-0d2c-42b3-8639-8cbc7373f71c": {"Tariq", "Tariq's DATA"},
 	"7f42512b-0772-1283-8478-604cefef32c1": {"Misty", "Misty's DATA"},
 	"5f42c12b-0892-4483-8498-504defeb32a1": {"Sky", "Sky's DATA"},
@@ -84,13 +85,20 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 				log.Println(err)
 				return
 			}
-
+			logMemUsage()
 			qrimage, err := qrcode.Encode(newuuid, qrcode.Medium, 200)
+
 			if err != nil {
 				log.Println(err)
 				return
 			}
-			Clients[newuuid] = Client{conn, qrimage}
+
+			Clients[newuuid] = &Client{conn, qrimage}
+
+			qrimage = nil
+
+			logMemUsage()
+
 		}
 
 	}
@@ -100,9 +108,8 @@ func MakeNewQUID() []byte {
 
 }
 func qrcodeHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println(r.URL)
+
 	uuid := r.URL.Query().Get("id")
-	log.Println(uuid)
 	if client, ok := Clients[uuid]; ok {
 		w.Header().Set("Content-Type", "image/png")
 		w.Write(client.qrimage)
@@ -110,26 +117,28 @@ func qrcodeHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.WriteHeader(http.StatusNotFound)
 	}
+	go cleanAfterTimeout(time.Now().Add(time.Second*30), uuid) // making a clean up goroutine for not used qrcodes
 }
 func authHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println(r.URL)
 	token := r.URL.Query().Get("token")
 	id := r.URL.Query().Get("id")
-	log.Println(id, token)
 	if client, ok := Clients[id]; ok {
 		client.conn.WriteMessage(websocket.TextMessage, []byte("AUTHENTICATED:"+id))
-		log.Println("AUTHENTICATED:", token)
-		authClients[id] = authClient{id, token}
+		authClients[id] = &authClient{id, token}
 		defer client.conn.Close()
+		client.qrimage = nil
+		logMemUsage()
 		delete(Clients, id)
+		logMemUsage()
+		runtime.GC()
+		logMemUsage()
 
 	}
 
 }
 func dashboardHandler(w http.ResponseWriter, r *http.Request) {
-	log.Println("Length before : ", len(authClients))
+
 	if exist, token := getCookie(r); exist == true {
-		log.Println("Auth user token:", token)
 		w.Write([]byte("<h1>Welcome " + AuthUsers[token].userName + "</h1>"))
 		w.Write([]byte("<h2>Your Data is: " + AuthUsers[token].userdata + "</h2>"))
 		return
@@ -137,14 +146,14 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := r.URL.Query().Get("id")
-	log.Println("dashboardHandler id:", id)
+
 	if authclient, ok := authClients[id]; ok {
-		log.Println("Auth user token:", authclient.token)
 		http.SetCookie(w, &http.Cookie{Name: "token", Value: authclient.token, HttpOnly: true, Expires: time.Now().Add(time.Hour * 24)})
 		w.Write([]byte("<h1>Welcome " + AuthUsers[authclient.token].userName + "</h1>"))
 		w.Write([]byte("<h2>Your Data is: " + AuthUsers[authclient.token].userdata + "</h2>"))
+		logMemUsage()
 		delete(authClients, id)
-		log.Println("Length after : ", len(authClients))
+
 		return
 
 	}
@@ -156,7 +165,6 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
 		return
 	}
-	log.Println("loginHandler :  serving login page")
 	http.ServeFile(w, r, "static/login.html")
 
 }
@@ -168,5 +176,26 @@ func getCookie(r *http.Request) (exist bool, token string) {
 
 	}
 	return true, tokencookie.Value
+
+}
+func logMemUsage() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	log.Printf("Alloc = %v ", m.Alloc)
+
+}
+func cleanAfterTimeout(timeout time.Time, id string) {
+	log.Println("cleanAfterTimeout:", id)
+	time.Sleep(time.Until(timeout))
+	if client, ok := Clients[id]; ok {
+		client.conn.WriteMessage(websocket.TextMessage, []byte("TIMEOUT"))
+		defer client.conn.Close()
+		client.qrimage = nil
+		logMemUsage()
+		delete(Clients, id)
+		logMemUsage()
+	}
+	runtime.GC()
 
 }
