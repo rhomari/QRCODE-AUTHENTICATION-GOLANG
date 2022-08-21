@@ -42,7 +42,7 @@ var AuthUsers = map[string]*Session{ // this is a dummy session database
 	"5f42c12b-0892-4483-8498-504defeb32a1": {"Sky", "Sky's DATA"},
 }
 
-func StarServing(addr string) {
+func StartServing(addr string) {
 
 	http.HandleFunc("/", homeHanlder)
 	http.HandleFunc("/ws", wsHandler)
