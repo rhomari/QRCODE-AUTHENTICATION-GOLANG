@@ -10,6 +10,4 @@ func main() {
 
 }
 
-func messageHandler(message []byte) {
-	fmt.Println(string(message))
-}
+
