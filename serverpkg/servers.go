@@ -186,8 +186,9 @@ func logMemUsage() {
 
 }
 func cleanAfterTimeout(timeout time.Time, id string) {
-	log.Println("cleanAfterTimeout:", id)
+
 	time.Sleep(time.Until(timeout))
+	log.Println("cleanAfterTimeout:", id)
 	if client, ok := Clients[id]; ok {
 		client.conn.WriteMessage(websocket.TextMessage, []byte("TIMEOUT"))
 		defer client.conn.Close()
@@ -197,5 +198,6 @@ func cleanAfterTimeout(timeout time.Time, id string) {
 		logMemUsage()
 	}
 	runtime.GC()
+	logMemUsage()
 
 }
