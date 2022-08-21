@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	serverpkg.StarServing(":8080")
+	serverpkg.StartServing(":8080")
 
 }
 
